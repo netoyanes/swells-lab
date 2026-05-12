@@ -14,18 +14,17 @@ interface Props {
   onClose: () => void;
 }
 
-function FileIcon({ type }: { type: string }) {
-  if (type?.startsWith("image")) return <span>🖼</span>;
-  if (type?.includes("pdf")) return <span>📄</span>;
-  if (type?.includes("video")) return <span>🎬</span>;
-  return <span>📎</span>;
+interface PreviewFile {
+  url: string;
+  type: string;
+  name: string;
 }
 
 export function TaskDetail({ task, projects, onClose }: Props) {
   const [picker, setPicker] = useState<null | "status" | "priority" | "energy">(null);
   const [brief, setBrief] = useState(task.brief);
   const [notes, setNotes] = useState(task.notes);
-  const [preview, setPreview] = useState<{ url: string; type: string; name: string } | null>(null);
+  const [preview, setPreview] = useState<PreviewFile | null>(null);
   const update = useUpdateTask();
   const toast = useToast();
 
@@ -49,15 +48,33 @@ export function TaskDetail({ task, projects, onClose }: Props) {
     );
   };
 
+  const openPreview = (a: { url: string; type: string; filename: string }) => {
+    const isPreviewable = a.type?.startsWith("image") || a.type?.includes("pdf");
+    if (isPreviewable) {
+      setPreview({ url: a.url, type: a.type, name: a.filename });
+    } else {
+      window.open(a.url, "_blank");
+    }
+  };
+
+  const fileIcon = (type: string) => {
+    if (type?.startsWith("image")) return "🖼";
+    if (type?.includes("pdf")) return "📄";
+    if (type?.includes("video")) return "🎬";
+    if (type?.includes("word") || type?.includes("document")) return "📝";
+    if (type?.includes("sheet") || type?.includes("excel")) return "📊";
+    return "📎";
+  };
+
   return (
     <>
+      {/* Main detail sheet */}
       <div className="fixed inset-0 bg-black/40 z-[100] flex items-end" onClick={onClose}>
         <div
           className="modal-sheet bg-surface w-full max-w-[480px] mx-auto rounded-t-[20px] p-5 max-h-[90vh] overflow-y-auto"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="w-10 h-1 bg-sand rounded-full mx-auto mb-4" />
-
           <h2 className="text-base font-medium leading-snug mb-3">{task.name}</h2>
 
           {projNames.length > 0 && (
@@ -109,45 +126,51 @@ export function TaskDetail({ task, projects, onClose }: Props) {
             />
           </div>
 
+          {/* Attachments */}
           {task.attachments.length > 0 && (
             <div className="mb-4">
               <label className="text-xs font-medium text-muted uppercase tracking-wide block mb-3">
                 Archivos adjuntos ({task.attachments.length})
               </label>
-              <div className="flex flex-col gap-2">
-                {task.attachments.map((a) => (
-                  <button
-                    key={a.id}
-                    onClick={() => {
-                      if (a.type?.startsWith("image")) {
-                        setPreview({ url: a.url, type: a.type, name: a.filename });
-                      } else {
-                        window.open(a.url, "_blank");
-                      }
-                    }}
-                    className="flex items-center gap-3 p-3 bg-sand rounded-md text-left w-full active:scale-[0.98] transition-transform"
-                  >
-                    {a.type?.startsWith("image") ? (
-                      <img
-                        src={a.url}
-                        alt={a.filename}
-                        className="w-12 h-12 object-cover rounded-md shrink-0"
-                      />
-                    ) : (
-                      <div className="w-12 h-12 bg-surface rounded-md flex items-center justify-center text-2xl shrink-0 border-[0.5px] border-hairline">
-                        <FileIcon type={a.type} />
+
+              {/* Image grid */}
+              {task.attachments.filter(a => a.type?.startsWith("image")).length > 0 && (
+                <div className="grid grid-cols-3 gap-2 mb-2">
+                  {task.attachments.filter(a => a.type?.startsWith("image")).map((a) => (
+                    <button
+                      key={a.id}
+                      onClick={() => openPreview(a)}
+                      className="aspect-square rounded-md overflow-hidden bg-sand active:scale-95 transition-transform"
+                    >
+                      <img src={a.url} alt={a.filename} className="w-full h-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Non-image files list */}
+              {task.attachments.filter(a => !a.type?.startsWith("image")).length > 0 && (
+                <div className="flex flex-col gap-2">
+                  {task.attachments.filter(a => !a.type?.startsWith("image")).map((a) => (
+                    <button
+                      key={a.id}
+                      onClick={() => openPreview(a)}
+                      className="flex items-center gap-3 p-3 bg-sand rounded-md text-left w-full active:scale-[0.98] transition-transform"
+                    >
+                      <div className="w-10 h-10 bg-surface rounded-md flex items-center justify-center text-xl shrink-0 border-[0.5px] border-hairline">
+                        {fileIcon(a.type)}
                       </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium truncate">{a.filename}</div>
-                      <div className="text-xs text-muted mt-0.5">
-                        {a.type?.startsWith("image") ? "Toca para ver" : "Toca para abrir"}
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium truncate">{a.filename}</div>
+                        <div className="text-xs text-muted mt-0.5">
+                          {a.type?.includes("pdf") ? "Toca para ver PDF" : "Toca para abrir"}
+                        </div>
                       </div>
-                    </div>
-                    <span className="text-muted text-lg">›</span>
-                  </button>
-                ))}
-              </div>
+                      <span className="text-muted">›</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -157,35 +180,82 @@ export function TaskDetail({ task, projects, onClose }: Props) {
         </div>
       </div>
 
-      {/* Image preview modal */}
-      {preview && preview.type?.startsWith("image") && (
-        <div
-          className="fixed inset-0 bg-black/90 z-[200] flex flex-col"
-          onClick={() => setPreview(null)}
-        >
-          <div className="flex items-center justify-between p-4">
-            <span className="text-white text-sm truncate flex-1">{preview.name}</span>
-            <div className="flex gap-3 ml-3">
+      {/* Preview modal - images */}
+      {preview?.type?.startsWith("image") && (
+        <div className="fixed inset-0 bg-black z-[200] flex flex-col" onClick={() => setPreview(null)}>
+          <div className="flex items-center justify-between p-4 shrink-0">
+            <span className="text-white text-sm truncate flex-1 mr-3">{preview.name}</span>
+            <div className="flex gap-2 shrink-0">
               
                 href={preview.url}
-                download={preview.name}
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={(e) => e.stopPropagation()}
-                className="text-white text-sm px-3 py-1.5 bg-white/20 rounded-full"
+                className="text-white text-xs px-3 py-1.5 bg-white/20 rounded-full"
+              >
+                Abrir
+              </a>
+              
+                href={preview.url}
+                download={preview.name}
+                onClick={(e) => e.stopPropagation()}
+                className="text-white text-xs px-3 py-1.5 bg-white/20 rounded-full"
               >
                 Descargar
               </a>
-              <button onClick={() => setPreview(null)} className="text-white text-sm px-3 py-1.5 bg-white/20 rounded-full">
-                Cerrar
+              <button
+                onClick={() => setPreview(null)}
+                className="text-white text-xs px-3 py-1.5 bg-white/20 rounded-full"
+              >
+                ✕
               </button>
             </div>
           </div>
-          <div className="flex-1 flex items-center justify-center p-4" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="flex-1 flex items-center justify-center p-4 overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
             <img
               src={preview.url}
               alt={preview.name}
               className="max-w-full max-h-full object-contain rounded-lg"
+              style={{ maxHeight: "calc(100vh - 100px)" }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Preview modal - PDF */}
+      {preview?.type?.includes("pdf") && (
+        <div className="fixed inset-0 bg-black z-[200] flex flex-col" onClick={() => setPreview(null)}>
+          <div className="flex items-center justify-between p-4 shrink-0">
+            <span className="text-white text-sm truncate flex-1 mr-3">{preview.name}</span>
+            <div className="flex gap-2 shrink-0">
+              
+                href={preview.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="text-white text-xs px-3 py-1.5 bg-white/20 rounded-full"
+              >
+                Abrir en Safari
+              </a>
+              <button
+                onClick={() => setPreview(null)}
+                className="text-white text-xs px-3 py-1.5 bg-white/20 rounded-full"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+          <div
+            className="flex-1 overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <iframe
+              src={preview.url}
+              className="w-full h-full border-0"
+              title={preview.name}
             />
           </div>
         </div>
