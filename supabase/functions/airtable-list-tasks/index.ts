@@ -78,6 +78,8 @@ function mapTask(r: any) {
     projectIds: f["Project"] || [],
     dueDate: f["Due Date"] || null,
     energy: f["Energy"] || null,
+    assignees: (f["Assignees"] || "").split(",").map((s: string) => s.trim()).filter(Boolean),
+    assigneeNames: f["Assignee Names"] || "",
     attachments: (f["Attachments"] || []).map((a: any) => ({
       id: a.id,
       url: a.url,

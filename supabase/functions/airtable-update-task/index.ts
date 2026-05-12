@@ -19,6 +19,8 @@ const FIELD_MAP: Record<string, string> = {
   brief: "Brief / Context",
   notes: "Sub-tasks / Notes",
   projectIds: "Project",
+  assignees: "Assignees",
+  assigneeNames: "Assignee Names",
   dueDate: "Due Date",
   energy: "Energy",
 };

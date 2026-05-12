@@ -40,6 +40,8 @@ export interface Task {
   dueDate: string | null;
   energy: TaskEnergy | null;
   attachments: Attachment[];
+  assignees?: string[];
+  assigneeNames?: string;
 }
 
 export type ProjectType =
@@ -93,3 +95,9 @@ export const AREA_OPTS: TaskArea[] = [
   "Onboarding",
   "Investigación",
 ];
+
+// Extended Task with assignees (user_ids from Supabase)
+export interface TaskWithAssignees extends Task {
+  assignees: string[];
+  assigneeNames: string;
+}
