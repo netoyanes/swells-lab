@@ -118,6 +118,8 @@ export default function AdminPage() {
 
   const canManage = ["owner", "admin"].includes(myRole);
   const isOwner = myRole === "owner";
+  const canChangeRole = (targetRole: string) =>
+    isOwner || (myRole === "admin" && ["member", "viewer"].includes(targetRole));
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center text-sm text-muted">Cargando...</div>;
@@ -171,12 +173,12 @@ export default function AdminPage() {
                 </span>
               </div>
 
-              {/* Role management — owner only, not self */}
-              {isOwner && m.user_id !== myUserId && (
+              {/* Role management — owners and admins (admins only for member/viewer), not self */}
+              {m.user_id !== myUserId && canChangeRole(m.role) && (
                 <div className="mt-3 pt-3 border-t-[0.5px] border-hairline">
                   <p className="text-[11px] text-muted mb-1.5">Cambiar rol:</p>
                   <div className="flex gap-1.5">
-                    {["admin", "member", "viewer"].map((r) => (
+                    {(isOwner ? ["admin", "member", "viewer"] : ["member", "viewer"]).map((r) => (
                       <button
                         key={r}
                         onClick={() => changeRole(m.user_id, r)}

@@ -28,15 +28,15 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Verify caller is owner
+    // Verify caller is owner or admin
     const { data: caller } = await serviceSupabase
       .from("members")
       .select("role")
       .eq("user_id", user.id)
       .single();
 
-    if (!caller || caller.role !== "owner") {
-      return new Response(JSON.stringify({ error: "Only owners can change roles" }), {
+    if (!caller || !["owner", "admin"].includes(caller.role)) {
+      return new Response(JSON.stringify({ error: "Only owners and admins can change roles" }), {
         status: 403, headers: { ...cors, "Content-Type": "application/json" },
       });
     }
@@ -48,11 +48,25 @@ serve(async (req) => {
       });
     }
 
-    const validRoles = ["owner", "admin", "member", "viewer"];
+    const validRoles = ["admin", "member", "viewer"];
     if (!validRoles.includes(role)) {
       return new Response(JSON.stringify({ error: "Invalid role" }), {
         status: 400, headers: { ...cors, "Content-Type": "application/json" },
       });
+    }
+
+    // Admins can only change roles of member/viewer users
+    if (caller.role === "admin") {
+      const { data: target } = await serviceSupabase
+        .from("members")
+        .select("role")
+        .eq("user_id", user_id)
+        .single();
+      if (!target || ["owner", "admin"].includes(target.role)) {
+        return new Response(JSON.stringify({ error: "Admins can only change roles of members and viewers" }), {
+          status: 403, headers: { ...cors, "Content-Type": "application/json" },
+        });
+      }
     }
 
     const { data: member, error } = await serviceSupabase
