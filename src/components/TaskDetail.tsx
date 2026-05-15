@@ -275,9 +275,8 @@ export function TaskDetail({ task, projects, members = [], myUserId = "", myRole
           currentAssignees={localAssignees}
           myRole={myRole}
           onClose={() => setShowAssignees(false)}
-          onSaved={(ids, names) => {
+          onSaved={(ids) => {
             setLocalAssignees(ids);
-            update.mutate({ taskId: task.id, fields: { assignees: ids, assigneeNames: names } as never });
           }}
         />
       )}
