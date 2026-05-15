@@ -1,3 +1,5 @@
+// supabase/functions/activity-list/index.ts
+// deno-lint-ignore-file no-explicit-any
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -9,44 +11,53 @@ const cors = {
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+
   try {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) return new Response("Unauthorized", { status: 401, headers: cors });
 
-    const userSupa = createClient(
+    const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
       { global: { headers: { Authorization: authHeader } } }
     );
-    const { data: { user } } = await userSupa.auth.getUser();
+    const { data: { user } } = await supabase.auth.getUser();
     if (!user) return new Response("Unauthorized", { status: 401, headers: cors });
 
-    const supa = createClient(
+    const serviceSupabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
     const url = new URL(req.url);
     const task_id = url.searchParams.get("task_id");
-    if (!task_id) return new Response(JSON.stringify({ error: "task_id required" }), {
-      status: 400, headers: { ...cors, "Content-Type": "application/json" },
-    });
+    if (!task_id) {
+      return new Response(JSON.stringify({ error: "Missing task_id" }), {
+        status: 400, headers: { ...cors, "Content-Type": "application/json" },
+      });
+    }
 
-    const { data: activities, error } = await supa
+    const { data: activities, error } = await serviceSupabase
       .from("activity_log")
       .select("*")
       .eq("task_id", task_id)
-      .order("created_at", { ascending: false })
-      .limit(50);
+      .order("created_at", { ascending: true });
+
     if (error) throw error;
 
-    // Join member info
-    const { data: members } = await supa.from("members").select("user_id, name, avatar_url");
-    const memberMap = Object.fromEntries((members || []).map(m => [m.user_id, m]));
+    // Fetch member info for all unique user_ids
+    const userIds = [...new Set(activities?.map((a: any) => a.user_id).filter(Boolean))];
+    const { data: membersData } = await serviceSupabase
+      .from("members")
+      .select("user_id, name, avatar_url")
+      .in("user_id", userIds);
 
-    const enriched = (activities || []).map(a => ({
+    const memberMap: Record<string, any> = {};
+    for (const m of (membersData || [])) memberMap[m.user_id] = m;
+
+    const enriched = (activities || []).map((a: any) => ({
       ...a,
-      user_name: memberMap[a.user_id]?.name || "Unknown",
+      user_name: memberMap[a.user_id]?.name || "",
       user_avatar: memberMap[a.user_id]?.avatar_url || null,
     }));
 

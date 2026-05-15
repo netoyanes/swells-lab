@@ -1,5 +1,5 @@
 import { supabase } from "./supabase";
-import type { Task, Project } from "./types";
+import type { Task, Project, ActivityItem, AppNotification, Member } from "./types";
 
 async function callEdge<T>(fn: string, options: RequestInit = {}): Promise<T> {
   const { data: { session } } = await supabase.auth.getSession();
@@ -46,4 +46,57 @@ export async function createTask(
     method: "POST",
     body: JSON.stringify({ fields }),
   });
+}
+
+export async function listActivity(taskId: string): Promise<{ activities: ActivityItem[] }> {
+  return callEdge(`activity-list?task_id=${encodeURIComponent(taskId)}`);
+}
+
+export async function createActivity(params: {
+  task_id: string;
+  task_name?: string;
+  action: string;
+  payload?: Record<string, unknown>;
+  photo_base64?: string;
+  photo_filename?: string;
+  photo_type?: string;
+}): Promise<{ activity: ActivityItem }> {
+  return callEdge("activity-create", {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+}
+
+export async function assignTask(params: {
+  task_id: string;
+  user_ids: string[];
+  task_name?: string;
+}): Promise<{ success: boolean; assignees: string[]; assigneeNames: string }> {
+  return callEdge("task-assign", {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+}
+
+export async function listNotifications(): Promise<{ notifications: AppNotification[]; unread_count: number }> {
+  return callEdge("notifications-list");
+}
+
+export async function markNotificationsRead(): Promise<{ success: boolean }> {
+  return callEdge("notifications-mark-read", { method: "POST", body: "{}" });
+}
+
+export async function updateMemberRole(params: {
+  user_id: string;
+  role: string;
+}): Promise<{ member: Member }> {
+  return callEdge("member-update-role", {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+}
+
+export async function getSession() {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session;
 }

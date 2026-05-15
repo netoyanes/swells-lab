@@ -1,3 +1,5 @@
+// supabase/functions/send-weekly-digest/index.ts
+// deno-lint-ignore-file no-explicit-any
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -9,86 +11,141 @@ const cors = {
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+
   try {
-    const supa = createClient(
+    const serviceSupabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    const pat = Deno.env.get("AIRTABLE_PAT")!;
-    const baseId = Deno.env.get("AIRTABLE_BASE_ID")!;
-    const tasksTable = Deno.env.get("AIRTABLE_TASKS_TABLE")!;
+    const resendApiKey = Deno.env.get("RESEND_API_KEY");
     const appUrl = Deno.env.get("APP_URL") || "https://swells-lab.vercel.app";
 
-    // Get all members
-    const { data: members } = await supa.from("members").select("*");
-    if (!members?.length) return new Response(JSON.stringify({ sent: 0 }), {
-      headers: { ...cors, "Content-Type": "application/json" },
-    });
+    const now = new Date();
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() - now.getDay() + 1); // Monday
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6); // Sunday
 
-    // Fetch all tasks from Airtable
-    const tasksRes = await fetch(
-      `https://api.airtable.com/v0/${baseId}/${tasksTable}?pageSize=100`,
-      { headers: { Authorization: `Bearer ${pat}` } }
-    );
-    const tasksData = await tasksRes.json();
-    const allTasks = (tasksData.records || []).map((r: any) => ({
-      id: r.id,
-      name: r.fields["Task Name"] || "",
-      status: r.fields["Status"] || "",
-      priority: r.fields["Priority"] || "",
-      dueDate: r.fields["Due Date"] || null,
-      assignees: (r.fields["Assignees"] || "").split(",").map((s: string) => s.trim()).filter(Boolean),
-    }));
+    const lastWeekStart = new Date(weekStart);
+    lastWeekStart.setDate(weekStart.getDate() - 7);
+    const lastWeekEnd = new Date(weekStart);
+    lastWeekEnd.setDate(weekStart.getDate() - 1);
 
-    const today = new Date();
-    const in7 = new Date(today); in7.setDate(in7.getDate() + 7);
+    // Get all members with email
+    const { data: members } = await serviceSupabase
+      .from("members")
+      .select("user_id, name, email")
+      .not("email", "is", null);
+
+    if (!members || members.length === 0) {
+      return new Response(JSON.stringify({ sent: 0 }), {
+        headers: { ...cors, "Content-Type": "application/json" },
+      });
+    }
+
+    // Fetch tasks from Airtable
+    const pat = Deno.env.get("AIRTABLE_PAT")!;
+    const baseId = Deno.env.get("AIRTABLE_BASE_ID")!;
+    const tableId = Deno.env.get("AIRTABLE_TASKS_TABLE")!;
+
+    const records: any[] = [];
+    let offset: string | undefined;
+    do {
+      const url = new URL(`https://api.airtable.com/v0/${baseId}/${tableId}`);
+      url.searchParams.set("pageSize", "100");
+      if (offset) url.searchParams.set("offset", offset);
+      const r = await fetch(url.toString(), {
+        headers: { Authorization: `Bearer ${pat}` },
+      });
+      const data = await r.json();
+      records.push(...(data.records || []));
+      offset = data.offset;
+    } while (offset);
+
+    const weekStartStr = weekStart.toISOString().split("T")[0];
+    const weekEndStr = weekEnd.toISOString().split("T")[0];
+    const lastWeekEndStr = lastWeekEnd.toISOString().split("T")[0];
+
+    const formatDateEs = (d: string) => {
+      const dt = new Date(d + "T00:00:00");
+      return dt.toLocaleDateString("es-MX", { weekday: "short", month: "short", day: "numeric" });
+    };
 
     let sent = 0;
     for (const member of members) {
-      const myTasks = allTasks.filter(t => t.assignees.includes(member.user_id));
-      const thisWeek = myTasks.filter(t => {
-        if (!t.dueDate) return false;
-        const d = new Date(t.dueDate);
-        return d >= today && d <= in7 && !t.status.includes("Done");
+      const myTasks = records.filter((r: any) => {
+        const assignees = (r.fields["Assignees"] || "").split(",").map((s: string) => s.trim());
+        return assignees.includes(member.user_id);
       });
-      const urgent = myTasks.filter(t =>
-        t.priority.includes("Urgent") && !t.status.includes("Done") && !t.dueDate
+
+      const thisWeek = myTasks.filter((r: any) => {
+        const due = r.fields["Due Date"];
+        return due && due >= weekStartStr && due <= weekEndStr && !r.fields["Status"]?.includes("Done");
+      });
+
+      const urgent = myTasks.filter((r: any) =>
+        r.fields["Priority"]?.includes("Urgent") && !r.fields["Status"]?.includes("Done") && !r.fields["Due Date"]
       );
-      const inProgress = myTasks.filter(t => t.status.includes("Progress"));
 
-      if (!myTasks.length) continue;
+      // Get completed last week from activity log
+      const { data: completedActivities } = await serviceSupabase
+        .from("activity_log")
+        .select("task_id, payload, created_at")
+        .eq("user_id", member.user_id)
+        .eq("action", "status_change")
+        .gte("created_at", lastWeekStart.toISOString())
+        .lte("created_at", lastWeekEnd.toISOString());
 
-      const dateStr = today.toLocaleDateString("es-MX", { day: "numeric", month: "long" });
+      const completedTaskIds = new Set(
+        (completedActivities || [])
+          .filter((a: any) => a.payload?.to?.includes("Done"))
+          .map((a: any) => a.task_id)
+      );
+      const completedLastWeek = myTasks.filter((r: any) => completedTaskIds.has(r.id));
 
-      const emailBody = `
-Hola ${member.name} 👋
+      const dateStr = now.toLocaleDateString("es-MX", { day: "numeric", month: "long" });
 
-📅 ESTA SEMANA (${thisWeek.length} tareas)
-${thisWeek.map(t => `• ${t.name} — vence ${t.dueDate}`).join("\n") || "• Sin tareas con fecha esta semana"}
+      const thisWeekLines = thisWeek.map((r: any) =>
+        `• ${r.fields["Task Name"]} — vence ${formatDateEs(r.fields["Due Date"])} — ${r.fields["Status"]}`
+      ).join("\n") || "— Sin tareas con fecha esta semana";
 
-⚡ EN PROGRESO (${inProgress.length})
-${inProgress.map(t => `• ${t.name}`).join("\n") || "• Ninguna"}
+      const completedLines = completedLastWeek.map((r: any) =>
+        `• ${r.fields["Task Name"]}`
+      ).join("\n") || "— Ninguna";
 
-🔴 URGENTE SIN FECHA (${urgent.length})
-${urgent.map(t => `• ${t.name}`).join("\n") || "• Ninguna"}
+      const urgentLines = urgent.map((r: any) =>
+        `• ${r.fields["Task Name"]}`
+      ).join("\n") || "— Sin urgentes";
+
+      const body = `Hola ${member.name} 👋
+
+📅 ESTA SEMANA
+${thisWeekLines}
+
+✅ COMPLETASTE LA SEMANA PASADA
+${completedLines}
+
+🔴 URGENTE SIN FECHA
+${urgentLines}
 
 Ver todas tus tareas → ${appUrl}
 
-— SWELLS LAB
-      `.trim();
+—
+SWELLS LAB`;
 
-      // Send via Supabase Auth email (or Resend if configured)
-      const resendKey = Deno.env.get("RESEND_API_KEY");
-      if (resendKey) {
+      if (resendApiKey && member.email) {
         await fetch("https://api.resend.com/emails", {
           method: "POST",
-          headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
+          headers: {
+            Authorization: `Bearer ${resendApiKey}`,
+            "Content-Type": "application/json",
+          },
           body: JSON.stringify({
-            from: "SWELLS LAB <noreply@swells.mx>",
+            from: "SWELLS LAB <noreply@swells-lab.vercel.app>",
             to: [member.email],
             subject: `SWELLS LAB — Tu semana del ${dateStr}`,
-            text: emailBody,
+            text: body,
           }),
         });
         sent++;
