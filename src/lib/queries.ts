@@ -1,7 +1,18 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createTask, listProjects, listTasks, updateTask } from "./api";
+import {
+  assignTask,
+  createActivity,
+  createTask,
+  listActivity,
+  listNotifications,
+  listProjects,
+  listTasks,
+  markNotificationsRead,
+  updateMemberRole,
+  updateTask,
+} from "./api";
 import type { Task } from "./types";
 
 export function useTasks() {
@@ -47,5 +58,55 @@ export function useCreateTask() {
   return useMutation({
     mutationFn: (fields: Partial<Task>) => createTask(fields),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
+  });
+}
+
+export function useActivity(taskId: string) {
+  return useQuery({
+    queryKey: ["activity", taskId],
+    queryFn: async () => (await listActivity(taskId)).activities,
+    staleTime: 10_000,
+    enabled: !!taskId,
+  });
+}
+
+export function useCreateActivity() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: createActivity,
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["activity", vars.task_id] });
+    },
+  });
+}
+
+export function useAssignTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: assignTask,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
+  });
+}
+
+export function useNotifications() {
+  return useQuery({
+    queryKey: ["notifications"],
+    queryFn: listNotifications,
+    staleTime: 0,
+    refetchInterval: 30_000,
+  });
+}
+
+export function useMarkNotificationsRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: markNotificationsRead,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
+  });
+}
+
+export function useUpdateMemberRole() {
+  return useMutation({
+    mutationFn: updateMemberRole,
   });
 }
