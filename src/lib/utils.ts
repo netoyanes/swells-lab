@@ -38,10 +38,28 @@ export function formatDate(d: string | null): string {
   return `📅 ${date.toLocaleDateString("es-MX", { day: "numeric", month: "short" })}`;
 }
 
+export function relativeTime(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return "ahora";
+  if (m < 60) return `hace ${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `hace ${h}h`;
+  const d = Math.floor(h / 24);
+  if (d === 1) return "ayer";
+  if (d < 7) return `hace ${d}d`;
+  return new Date(dateStr).toLocaleDateString("es-MX", { day: "numeric", month: "short" });
+}
+
 export function sortByPriority(tasks: Task[]): Task[] {
-  return [...tasks].sort(
-    (a, b) => priorityOrder(a.priority) - priorityOrder(b.priority)
-  );
+  return [...tasks].sort((a, b) => {
+    const p = priorityOrder(a.priority) - priorityOrder(b.priority);
+    if (p !== 0) return p;
+    if (a.dueDate && b.dueDate) return a.dueDate.localeCompare(b.dueDate);
+    if (a.dueDate) return -1;
+    if (b.dueDate) return 1;
+    return 0;
+  });
 }
 
 export function isOpen(t: Task): boolean {
@@ -54,4 +72,13 @@ export function haptic() {
       window.navigator.vibrate(10);
     }
   } catch {}
+}
+
+export async function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve((reader.result as string).split(",")[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }

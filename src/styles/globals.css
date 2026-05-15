@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-* { -webkit-tap-highlight-color: transparent; }
+* { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
 
 html, body { background: #faf9f6; }
 
@@ -10,19 +10,51 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
   color: #1a1a1a;
   padding-bottom: env(safe-area-inset-bottom);
+  -webkit-font-smoothing: antialiased;
 }
 
-/* Hide scrollbars on filter chips row */
+/* Hide scrollbars */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { scrollbar-width: none; }
 
-/* Modal slide-up animation */
+/* Bottom sheet slide-up */
 @keyframes slideUp {
   from { transform: translateY(100%); }
   to { transform: translateY(0); }
 }
 .modal-sheet { animation: slideUp 0.25s ease-out; }
 
+/* Notification panel slide-down */
+@keyframes slideDown {
+  from { transform: translateY(-8px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.notif-panel { animation: slideDown 0.2s ease-out; }
+
 /* Spinner */
 @keyframes spin { to { transform: rotate(360deg); } }
 .spinning { animation: spin 1s linear infinite; }
+
+/* Skeleton pulse */
+@keyframes skeletonPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+.skeleton { animation: skeletonPulse 1.5s ease-in-out infinite; }
+
+/* Fade in */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.fade-in { animation: fadeIn 0.15s ease-out; }
+
+/* Image viewer */
+@keyframes scaleIn {
+  from { transform: scale(0.96); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+.scale-in { animation: scaleIn 0.2s ease-out; }
+
+/* Prevent body scroll when modal open */
+body.modal-open { overflow: hidden; }
